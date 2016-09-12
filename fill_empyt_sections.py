@@ -17,7 +17,8 @@ if __name__ == "__main__":
 
         print("Processing sampe " + sample)
 
-        neuron_ids = h5py.File('sample_' + sample + '_padded_20160501.aligned.hdf', 'r+')['volumes/labels/neuron_ids']
+        f = h5py.File('sample_' + sample + '_padded_20160501.aligned.hdf', 'r+')
+        neuron_ids = f['volumes/labels/neuron_ids']
         #for bad_section in bad_sections[sample]:
         for bad_section in [111]:
 
@@ -30,3 +31,5 @@ if __name__ == "__main__":
 
             print("Interpolating...")
             neuron_ids[bad_section] = interpolate(a, b)
+
+        f.close()
