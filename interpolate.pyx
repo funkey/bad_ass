@@ -85,7 +85,7 @@ def interpolate(np.ndarray[DTYPE_t, ndim=2] a, np.ndarray[DTYPE_t, ndim=2] b):
 
                 interpolated.append((len(polygon_c[0]), label, polygon_c))
 
-    interpolated.sort()
+    interpolated.sort(reverse=True)
     for (size, label, polygon) in interpolated:
 
         print("Drawing interpolated polygon of size " + str(size))
