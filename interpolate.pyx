@@ -283,7 +283,7 @@ def truncate_polygons(np.ndarray[np.float_t, ndim=2] polygon_a, np.ndarray[np.fl
     cdef np.ndarray[np.float_t, ndim=2] filtered_a = filter_points(points_a, points_b, bb_b)
     cdef np.ndarray[np.float_t, ndim=2] filtered_b = filter_points(points_b, points_a, bb_a)
 
-    return (filtered_a.transpose(), filtered_a.transpose())
+    return (filtered_a.transpose(), filtered_b.transpose())
 
 def filter_points(np.ndarray[np.float_t, ndim=2] points_a, np.ndarray[np.float_t, ndim=2] points_b, bb_b):
 
