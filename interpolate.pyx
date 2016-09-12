@@ -294,15 +294,15 @@ def filter_points(np.ndarray[np.float_t, ndim=2] points_a, np.ndarray[np.float_t
 
     distances = np.ones(size, dtype=np.float)
     for p in points_b:
-        distances[p[0]-offset[0],p[1]-offset[1]] = 0
+        distances[int(p[0]-offset[0]),int(p[1]-offset[1])] = 0
 
     distances = distance_transform_edt(distances)
 
     len_a = len(points_a)
     keep = np.zeros((len_a,), dtype=np.bool)
     for i in range(len_a):
-        y = points_a[i][0]-offset[0]
-        x = points_a[i][1]-offset[1]
+        y = int(points_a[i][0]-offset[0])
+        x = int(points_a[i][1]-offset[1])
         if y < 0 or x < 0 or y >= size[0] or x >= size[1]:
             continue
         if distances[y,x] < POLYGON_MAX_STRETCH:
