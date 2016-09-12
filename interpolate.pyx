@@ -1,5 +1,5 @@
 from __future__ import print_function
-from scipy.ndimage import measurements
+from scipy.ndimage import measurements, distance_transform_edt
 from skimage import draw
 from time import time
 import json
@@ -13,6 +13,7 @@ ctypedef np.uint64_t DTYPE_t
 # max average distance in pixels of vertices of one polygon to another to 
 # consider them as part of the same process
 POLYGON_MATCHING_THRESHOLD=100
+POLYGON_MAX_STRETCH=20
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -36,20 +37,25 @@ def interpolate(np.ndarray[DTYPE_t, ndim=2] a, np.ndarray[DTYPE_t, ndim=2] b):
 
     # get bounding boxes of label components
     # • take care of repeating labels
-    label_components_a = get_label_components(a)
-    label_components_b = get_label_components(b)
+    label_bbs_a = get_label_bbs(a)
+    label_bbs_b = get_label_bbs(b)
 
-    label_polygons_a = get_label_polygons(a, label_components_a)
-    label_polygons_b = get_label_polygons(b, label_components_b)
+    label_polygons_a = get_label_polygons(a, label_bbs_a)
+    label_polygons_b = get_label_polygons(b, label_bbs_b)
 
     start = time()
     print("Interpolating polygons")
 
+    interpolated = []
+
     # for each label component in a
     cdef DTYPE_t label
-    for (label, polygons_a) in label_polygons_a.iteritems():
+    for label in label_polygons_a.keys():
 
-        #print("Processing label " + str(label))
+        polygons_a = label_polygons_a[label]
+        bbs_a      = label_bbs_a[label]
+
+        print("Processing label " + str(label))
 
         # if label doesn't exist in b, continue
         if label not in label_polygons_b:
@@ -57,22 +63,36 @@ def interpolate(np.ndarray[DTYPE_t, ndim=2] a, np.ndarray[DTYPE_t, ndim=2] b):
             continue
 
         polygons_b = label_polygons_b[label]
+        bbs_b      = label_bbs_b[label]
 
         # for each polygon in a, find all matching polygons in b
-        for polygon_a in polygons_a:
-            for polygon_b in polygons_b:
+        for (polygon_a, bb_a) in zip(polygons_a, bbs_a):
+            for (polygon_b, bb_b) in zip(polygons_b, bbs_b):
 
-                (score, mapping) = match_polygons(polygon_a, polygon_b)
+                print("Size of original polygon a: " + str(len(polygon_a[0])))
+                (filtered_a, filtered_b) = truncate_polygons(polygon_a, polygon_b, bb_a, bb_b)
+                print("Size of filtered polygon a: " + str(len(filtered_a[0])))
+
+                # too far away from each other
+                if len(filtered_a[0])*len(filtered_b[0]) == 0:
+                    continue
+
+                (score, mapping) = match_polygons(filtered_a, filtered_b)
 
                 # if too far away, continue
                 if score > POLYGON_MATCHING_THRESHOLD:
                     continue
 
-                polygon_c = interpolate_polygon(polygon_a, polygon_b, mapping)
+                polygon_c = interpolate_polygon(filtered_a, filtered_b, mapping)
 
-                #print("Drawing interpolated polygon")
-                rows, cols = draw.polygon(polygon_c[1], polygon_c[0])
-                interpolation[rows, cols] = label
+                interpolated.append((len(polygon_c[0]), label, polygon_c))
+
+    interpolated.sort()
+    for (size, label, polygon) in interpolated:
+
+        print("Drawing interpolated polygon of size " + size)
+        rows, cols = draw.polygon(polygon[0], polygon[1])
+        interpolation[rows, cols] = label
 
     print("Finished in " + str(time()-start) + "s")
 
@@ -80,9 +100,9 @@ def interpolate(np.ndarray[DTYPE_t, ndim=2] a, np.ndarray[DTYPE_t, ndim=2] b):
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def get_label_components(np.ndarray[DTYPE_t, ndim=2] a):
+def get_label_bbs(np.ndarray[DTYPE_t, ndim=2] a):
 
-    cache = read_label_components(a.data)
+    cache = read_label_bbs(a.data)
     if cache is not None:
         print("Reading label components from cache")
         return cache
@@ -92,7 +112,7 @@ def get_label_components(np.ndarray[DTYPE_t, ndim=2] a):
     cdef int height = a.shape[0]
     cdef int width = a.shape[1]
 
-    label_components = {}
+    label_bbs = {}
 
     labels = np.unique(a)
     print("Getting label components for " + str(len(labels)) + " labels")
@@ -104,28 +124,28 @@ def get_label_components(np.ndarray[DTYPE_t, ndim=2] a):
             continue
 
         (compontents, num) = measurements.label((a==label))
-        label_components[label] = measurements.find_objects(compontents)
+        label_bbs[label] = measurements.find_objects(compontents)
 
     print("Finished in " + str(time() - start) + "s")
 
-    save_label_components(label_components, a.data)
+    save_label_bbs(label_bbs, a.data)
 
-    return label_components
+    return label_bbs
 
-def save_label_components(data_dict, reference):
+def save_label_bbs(data_dict, reference):
 
     d = { str(k): [ [ (s.start, s.stop) for s in c ] for c in v ] for (k,v) in data_dict.iteritems() }
 
     print("hash is " + str(hash(reference)))
 
-    with open('cache_' + str(hash(reference)) + '_label_components.json', 'w') as f:
+    with open('cache_' + str(hash(reference)) + '_label_bbs.json', 'w') as f:
         json.dump(d, f)
 
-def read_label_components(reference):
+def read_label_bbs(reference):
 
     try:
 
-        with open('cache_' + str(hash(reference)) + '_label_components.json', 'r') as f:
+        with open('cache_' + str(hash(reference)) + '_label_bbs.json', 'r') as f:
             d = json.load(f)
 
         return { np.uint64(k) : [ [ slice(s[0], s[1]) for s in c ] for c in v ] for (k,v) in d.iteritems() }
@@ -137,7 +157,7 @@ def read_label_components(reference):
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def get_label_polygons(np.ndarray[DTYPE_t, ndim=2] a, label_components):
+def get_label_polygons(np.ndarray[DTYPE_t, ndim=2] a, label_bbs):
     '''NO BOUNDARY CHECKS.
 
     This implementation assumes that all components do not touch the boundary.
@@ -158,7 +178,7 @@ def get_label_polygons(np.ndarray[DTYPE_t, ndim=2] a, label_components):
 
     polygons = {}
 
-    for (label, components) in label_components.iteritems():
+    for (label, components) in label_bbs.iteritems():
         polygons[label] = []
         for component in components:
 
@@ -245,11 +265,51 @@ def get_label_polygons(np.ndarray[DTYPE_t, ndim=2] a, label_components):
                     if direction == LEFT:
                         lh_y += 1
 
-            polygons[label].append(np.array([polygon_x, polygon_y], dtype=np.int32))
+            polygons[label].append(np.array([polygon_y, polygon_x], dtype=np.int32))
+
+        assert(len(polygons[label]) == len(label_bbs[label]))
 
     print("Finished in " + str(time()-start) + "s")
 
+
     return polygons
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def truncate_polygons(np.ndarray[np.int32_t, ndim=2] polygon_a, np.ndarray[np.int32_t, ndim=2] polygon_b, bb_a, bb_b):
+    '''Remove all points from the given polygons that are too far away from the other one.'''
+
+    cdef np.ndarray[np.int32_t, ndim=2] points_a = np.array(polygon_a).transpose()
+    cdef np.ndarray[np.int32_t, ndim=2] points_b = np.array(polygon_b).transpose()
+
+    cdef np.ndarray[np.int32_t, ndim=2] filtered_a = filter_points(points_a, points_b, bb_b)
+    cdef np.ndarray[np.int32_t, ndim=2] filtered_b = filter_points(points_b, points_a, bb_a)
+
+    return (filtered_a.transpose(), filtered_a.transpose())
+
+def filter_points(np.ndarray[np.int32_t, ndim=2] points_a, np.ndarray[np.int32_t, ndim=2] points_b, bb_b):
+
+    # size of distance map
+    size = tuple(bb_b[d].stop-bb_b[d].start+2*POLYGON_MAX_STRETCH for d in range(2))
+    # upper left of distance map in world coordinates
+    offset = tuple(bb_b[d].start-POLYGON_MAX_STRETCH for d in range(2))
+
+    distances = np.ones(size, dtype=np.float)
+    for p in points_b:
+        distances[p[0]-offset[0],p[1]-offset[1]] = 0
+
+    distances = distance_transform_edt(distances)
+
+    len_a = len(points_a)
+    keep = np.zeros((len_a,), dtype=np.bool)
+    for i in range(len_a):
+        y = points_a[i][0]-offset[0]
+        x = points_a[i][1]-offset[1]
+        if y < 0 or x < 0 or y >= size[0] or x >= size[1]:
+            continue
+        if distances[y,x] < POLYGON_MAX_STRETCH:
+            keep[i] = True
+    return points_a[keep]
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

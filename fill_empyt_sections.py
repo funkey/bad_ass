@@ -12,12 +12,14 @@ bad_sections = {
 
 if __name__ == "__main__":
 
-    for sample in bad_sections.keys():
+    #for sample in bad_sections.keys():
+    for sample in ['C']:
 
         print("Processing sampe " + sample)
 
         neuron_ids = h5py.File('sample_' + sample + '_padded_20160501.aligned.hdf', 'r+')['volumes/labels/neuron_ids']
-        for bad_section in bad_sections[sample]:
+        #for bad_section in bad_sections[sample]:
+        for bad_section in [111]:
 
             print("Processing section " + str(bad_section))
 
