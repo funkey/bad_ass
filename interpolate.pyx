@@ -69,9 +69,7 @@ def interpolate(np.ndarray[DTYPE_t, ndim=2] a, np.ndarray[DTYPE_t, ndim=2] b):
         for (polygon_a, bb_a) in zip(polygons_a, bbs_a):
             for (polygon_b, bb_b) in zip(polygons_b, bbs_b):
 
-                print("Size of original polygon a: " + str(len(polygon_a[0])))
                 (filtered_a, filtered_b) = truncate_polygons(polygon_a, polygon_b, bb_a, bb_b)
-                print("Size of filtered polygon a: " + str(len(filtered_a[0])))
 
                 # too far away from each other
                 if len(filtered_a[0])*len(filtered_b[0]) == 0:
@@ -90,7 +88,7 @@ def interpolate(np.ndarray[DTYPE_t, ndim=2] a, np.ndarray[DTYPE_t, ndim=2] b):
     interpolated.sort()
     for (size, label, polygon) in interpolated:
 
-        print("Drawing interpolated polygon of size " + size)
+        print("Drawing interpolated polygon of size " + str(size))
         rows, cols = draw.polygon(polygon[0], polygon[1])
         interpolation[rows, cols] = label
 
@@ -265,7 +263,7 @@ def get_label_polygons(np.ndarray[DTYPE_t, ndim=2] a, label_bbs):
                     if direction == LEFT:
                         lh_y += 1
 
-            polygons[label].append(np.array([polygon_y, polygon_x], dtype=np.int32))
+            polygons[label].append(np.array([polygon_y, polygon_x], dtype=np.float))
 
         assert(len(polygons[label]) == len(label_bbs[label]))
 
@@ -276,18 +274,18 @@ def get_label_polygons(np.ndarray[DTYPE_t, ndim=2] a, label_bbs):
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def truncate_polygons(np.ndarray[np.int32_t, ndim=2] polygon_a, np.ndarray[np.int32_t, ndim=2] polygon_b, bb_a, bb_b):
+def truncate_polygons(np.ndarray[np.float_t, ndim=2] polygon_a, np.ndarray[np.float_t, ndim=2] polygon_b, bb_a, bb_b):
     '''Remove all points from the given polygons that are too far away from the other one.'''
 
-    cdef np.ndarray[np.int32_t, ndim=2] points_a = np.array(polygon_a).transpose()
-    cdef np.ndarray[np.int32_t, ndim=2] points_b = np.array(polygon_b).transpose()
+    cdef np.ndarray[np.float_t, ndim=2] points_a = np.array(polygon_a).transpose()
+    cdef np.ndarray[np.float_t, ndim=2] points_b = np.array(polygon_b).transpose()
 
-    cdef np.ndarray[np.int32_t, ndim=2] filtered_a = filter_points(points_a, points_b, bb_b)
-    cdef np.ndarray[np.int32_t, ndim=2] filtered_b = filter_points(points_b, points_a, bb_a)
+    cdef np.ndarray[np.float_t, ndim=2] filtered_a = filter_points(points_a, points_b, bb_b)
+    cdef np.ndarray[np.float_t, ndim=2] filtered_b = filter_points(points_b, points_a, bb_a)
 
     return (filtered_a.transpose(), filtered_a.transpose())
 
-def filter_points(np.ndarray[np.int32_t, ndim=2] points_a, np.ndarray[np.int32_t, ndim=2] points_b, bb_b):
+def filter_points(np.ndarray[np.float_t, ndim=2] points_a, np.ndarray[np.float_t, ndim=2] points_b, bb_b):
 
     # size of distance map
     size = tuple(bb_b[d].stop-bb_b[d].start+2*POLYGON_MAX_STRETCH for d in range(2))
@@ -313,7 +311,7 @@ def filter_points(np.ndarray[np.int32_t, ndim=2] points_a, np.ndarray[np.int32_t
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def match_polygons(np.ndarray[np.int32_t, ndim=2] polygon_a, np.ndarray[np.int32_t, ndim=2] polygon_b):
+def match_polygons(np.ndarray[np.float_t, ndim=2] polygon_a, np.ndarray[np.float_t, ndim=2] polygon_b):
     '''Match two polygons, each given as [Y,X], where Y and X are lists of y and 
     x coordinates.
 
@@ -335,8 +333,8 @@ def match_polygons(np.ndarray[np.int32_t, ndim=2] polygon_a, np.ndarray[np.int32
 
     # now a is smaller than b
 
-    cdef np.ndarray[np.int32_t, ndim=2] points_a = np.array(polygon_a).transpose()
-    cdef np.ndarray[np.int32_t, ndim=2] points_b = np.array(polygon_b).transpose()
+    cdef np.ndarray[np.float_t, ndim=2] points_a = np.array(polygon_a).transpose()
+    cdef np.ndarray[np.float_t, ndim=2] points_b = np.array(polygon_b).transpose()
 
     # subsample b
     b_sub_indices = [ int(round(t*len_b)) for t in np.linspace(0.0, 1.0, len_a, endpoint=False) ]
@@ -371,7 +369,7 @@ def match_polygons(np.ndarray[np.int32_t, ndim=2] polygon_a, np.ndarray[np.int32
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def interpolate_polygon(np.ndarray[np.int32_t, ndim=2] polygon_a, np.ndarray[np.int32_t, ndim=2] polygon_b, mapping):
+def interpolate_polygon(np.ndarray[np.float_t, ndim=2] polygon_a, np.ndarray[np.float_t, ndim=2] polygon_b, mapping):
 
     # find the smaller one
     cdef int len_a = len(polygon_a[0])
